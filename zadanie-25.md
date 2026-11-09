@@ -1,43 +1,102 @@
-# Zadanie 24: Interpretacja danych wydajnościowych
+# Zadanie 25: Generowanie prostego Jenkinsfile
 
-## Pytanie
+## 1. Cel zadania
 
-Zinterpretuj te dane. Czy widzisz jakieś potencjalne problemy? Co sugerujesz, aby poprawić wydajność?
+Celem zadania było przygotowanie deklaratywnego potoku Jenkins dla aplikacji Node.js. Pipeline automatyzuje kolejne etapy procesu CI/CD: pobieranie kodu, instalowanie zależności, testowanie, budowanie aplikacji, tworzenie obrazu Docker oraz publikowanie go w rejestrze Docker Hub.
 
-## Dane
+## 2. Wyjaśnienie poszczególnych etapów Jenkinsfile
 
-Metryki serwera API z ostatnich 24 godzin:
+### 2.1. Konfiguracja pipeline
 
-- średni czas odpowiedzi: 230 ms
-- 95. percentyl czasu odpowiedzi: 450 ms
-- 99. percentyl czasu odpowiedzi: 1200 ms
-- liczba zapytań: 15 000
-- liczba błędów 5xx: 120
-- użycie CPU: średnio 45%, maksymalnie 80%
-- użycie pamięci: średnio 2,1 GB, maksymalnie 3,5 GB z 4 GB dostępnych
+`pipeline` określa główną strukturę potoku w składni deklaratywnej Jenkinsa.
 
-## Interpretacja
+`agent any` oznacza, że Jenkins może uruchomić zadanie na dowolnym dostępnym agencie.
 
-Ruch jest niewielki. 15 000 żądań na dobę to około 625 na godzinę, czyli średnio jedno żądanie na kilka sekund. Przy takim obciążeniu sam wolumen nie tłumaczy ani 45% CPU, ani sekundowych odpowiedzi.
+Sekcja `environment` pozwala zdefiniować zmienne środowiskowe wykorzystywane w kolejnych etapach. W tym przypadku `DOCKER_IMAGE` określa nazwę obrazu Docker, który będzie budowany i publikowany.
 
-Średnia 230 ms wygląda umiarkowanie, ale ogon jest długi. 95. percentyl (450 ms) jest około dwa razy wyższy od średniej, a 99. percentyl (1200 ms) około pięć razy. Co setne żądanie czeka ponad sekundę. Średnia tego nie pokazuje, bo szybkie odpowiedzi ją ściągają w dół.
+### 2.2. Checkout – pobieranie kodu
 
-Błędów 5xx jest 120, czyli 0,8% żądań. To już zauważalna awaryjność: mniej więcej co 125. wywołanie kończy się błędem serwera, nie błędem klienta.
+Etap `Checkout` odpowiada za pobranie kodu źródłowego z repozytorium.
 
-Pamięć w szczycie sięga 3,5 GB z 4 GB, czyli około 88% dostępnego RAM-u. Zostaje pół gigabajta zapasu. Średnie 2,1 GB jest spokojniejsze, więc albo zużycie faluje, albo rośnie i opada. CPU w szczycie ma 80%, więc bywa zajęte, ale nie stoi w 100%.
+Polecenie `checkout scm` wykorzystuje konfigurację repozytorium przypisaną do zadania Jenkins i pobiera odpowiednią wersję kodu.
 
-## Potencjalne problemy
+Dzięki temu pipeline pracuje na aktualnej wersji projektu.
 
-Długi ogon przy małym ruchu zwykle oznacza pojedyncze wolne operacje, nie brak mocy całego serwera. Typowo jest to zapytanie do bazy bez indeksu, wolne wywołanie zewnętrznej usługi albo czekanie na blokadę. Te same żądania mogą kończyć się kodem 5xx, gdy timeout albo brak pamięci ubije obsługę.
+### 2.3. Install Dependencies – instalacja zależności
 
-Pamięć blisko 4 GB zostawia mało miejsca na skok. Przy dalszym wzroście proces może zwolnić przez odśmiecanie albo zostać zabity. Średnie CPU 45% przy jednym żądaniu na kilka sekund jest wysokie jak na samą obsługę API. Warto sprawdzić, czy czas procesora zjada aplikacja w tle, a nie same żądania.
+Etap `Install Dependencies` instaluje biblioteki i pakiety wymagane przez aplikację Node.js.
 
-## Co poprawić
+Polecenie `npm install` odczytuje plik `package.json` i instaluje wymagane zależności.
 
-Najpierw rozdzielić metryki, a nie dokładać CPU. 99. percentyl i błędy 5xx trzeba zobaczyć per endpoint i w czasie: czy 1200 ms i błędy wypadają w tych samych minutach co szczyt 3,5 GB.
+Jest to konieczne, aby aplikacja mogła zostać poprawnie przetestowana i zbudowana.
 
-Dla wolnego procenta żądań: ślad albo log z czasem bazy i czasem wywołań zewnętrznych. Jeśli wolna jest jedna kwerenda, indeks albo mniej danych w odpowiedzi skróci ogon skuteczniej niż mocniejsza maszyna.
+### 2.4. Run Tests – uruchomienie testów
 
-Dla pamięci: wykres z całej doby. Jeśli szczyt wraca do 2 GB po ruchu, to zapas jest mały i wystarczy limit albo trochę więcej RAM-u. Jeśli krzywa tylko rośnie, to wyciek i większa maszyna go nie usuwa.
+Etap `Run Tests` uruchamia testy aplikacji za pomocą polecenia `npm test`.
 
-CPU profilować przy tych 45% średniej. Dopiero gdy widać, że procent schodzi na konkretną pętlę albo serializację, jest sens upraszczać kod. Dokładanie rdzeni przy 15 000 żądań na dobę nie skróci 99. percentyla, jeśli te żądania czekają na bazę.
+Pozwala to sprawdzić, czy aplikacja działa zgodnie z założeniami i czy wprowadzone zmiany nie powodują błędów.
+
+Jeżeli testy zakończą się niepowodzeniem, Jenkins przerwie wykonywanie kolejnych etapów pipeline.
+
+### 2.5. Build Application – budowanie aplikacji
+
+Etap `Build Application` odpowiada za przygotowanie aplikacji do wdrożenia.
+
+Polecenie `npm run build` uruchamia skrypt budowania zdefiniowany w pliku `package.json`.
+
+W zależności od projektu może to oznaczać kompilację kodu, optymalizację plików lub wygenerowanie wersji produkcyjnej aplikacji.
+
+### 2.6. Build Docker Image – budowanie obrazu Docker
+
+Etap `Build Docker Image` tworzy obraz Docker na podstawie pliku `Dockerfile` znajdującego się w katalogu projektu.
+
+Polecenie:
+
+`docker build -t %DOCKER_IMAGE%:%BUILD_NUMBER% .`
+
+buduje obraz i nadaje mu nazwę oraz tag. Zmienna `BUILD_NUMBER` oznacza numer aktualnego wykonania pipeline.
+
+Dzięki temu poszczególne wersje obrazu można łatwo rozróżnić.
+
+### 2.7. Push Docker Image – publikowanie obrazu
+
+Etap `Push Docker Image` odpowiada za przesłanie przygotowanego obrazu do rejestru Docker Hub.
+
+Do uwierzytelnienia wykorzystywane są dane dostępowe zapisane wcześniej w Jenkins Credentials.
+
+Polecenie `docker login` loguje użytkownika do Docker Hub, a `docker push` publikuje obraz w rejestrze.
+
+Po zakończeniu operacji wykonywane jest `docker logout`, które wylogowuje użytkownika.
+
+Dzięki temu gotowy obraz może zostać pobrany i uruchomiony na innym środowisku.
+
+### 2.8. Post – działania końcowe
+
+Sekcja `post` definiuje działania wykonywane po zakończeniu pipeline.
+
+Zawiera trzy warunki:
+
+- `success` – wyświetla komunikat o pomyślnym zakończeniu wszystkich etapów.
+- `failure` – wyświetla komunikat informujący o niepowodzeniu pipeline.
+- `always` – wyświetla komunikat niezależnie od wyniku wykonania.
+
+## 3. Najlepsze praktyki przy tworzeniu pipeline'ów Jenkins
+
+Podczas tworzenia potoków Jenkins warto stosować następujące zasady:
+
+1. **Podział na etapy** – każdy etap powinien odpowiadać za konkretną czynność, co ułatwia analizowanie błędów.
+2. **Bezpieczne przechowywanie danych** – haseł, tokenów i innych poufnych danych nie należy umieszczać bezpośrednio w kodzie Jenkinsfile. Należy korzystać z Jenkins Credentials.
+3. **Automatyczne testowanie** – testy powinny być wykonywane przed budowaniem i publikowaniem aplikacji.
+4. **Wersjonowanie obrazów** – warto stosować unikalne tagi, np. numer kompilacji, aby łatwo identyfikować poszczególne wersje aplikacji.
+5. **Czytelność kodu** – nazwy etapów i komunikaty powinny jasno określać wykonywane operacje.
+6. **Obsługa błędów** – warto stosować sekcję `post`, aby informować o wyniku wykonania pipeline.
+7. **Ograniczanie uprawnień** – dane dostępowe powinny mieć tylko takie uprawnienia, jakie są niezbędne do wykonania zadania.
+8. **Kontrola zależności** – w projektach produkcyjnych warto rozważyć `npm ci` zamiast `npm install`, ponieważ zapewnia instalację zgodną z plikiem `package-lock.json`.
+
+## 4. Podsumowanie
+
+W ramach zadania przygotowano deklaratywny Jenkinsfile automatyzujący podstawowe etapy procesu CI/CD dla aplikacji Node.js.
+
+Pipeline obejmuje pobieranie kodu, instalację zależności, testowanie, budowanie aplikacji, tworzenie obrazu Docker i publikowanie go w Docker Hub.
+
+Zastosowanie takiego rozwiązania pozwala ograniczyć liczbę czynności wykonywanych ręcznie, usprawnić proces tworzenia oprogramowania oraz zwiększyć powtarzalność procesu wdrażania aplikacji.
