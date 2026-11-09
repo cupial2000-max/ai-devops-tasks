@@ -1,0 +1,31 @@
+# Zależności Node.js
+node_modules/
+
+# Logi i cache menedżerów pakietów
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.yarn/
+
+# Zmienne środowiskowe i sekrety (hasła do MongoDB, porty, klucze)
+.env
+.env.*
+!.env.example
+
+# Wynik budowania aplikacji
+dist/
+build/
+
+# Dane lokalnej bazy MongoDB (wolumen albo katalog obok projektu)
+data/
+mongo-data/
+mongodb-data/
+*.wt
+mongod.lock
+
+# Dane i nadpisania lokalnego Dockera
+docker-data/
+**/.docker/
+docker-compose.override.yml
