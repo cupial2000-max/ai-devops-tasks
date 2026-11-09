@@ -1,41 +1,99 @@
+# Zadanie 28 – Skrypt do zarządzania zadaniami Jenkins
 
-# Zadanie 27 – Wyjaśnienie zależności między etapami pipeline'u Jenkins
+## 1. Cel skryptu
 
-## 1. Checkout kodu
-Pierwszym etapem jest pobranie kodu źródłowego aplikacji z repozytorium Git, np. GitHub. Jenkins uzyskuje w ten sposób aktualną wersję projektu, która będzie poddawana dalszym procesom.
+Celem skryptu `jenkins-manager.py` jest automatyzacja podstawowych operacji związanych z zarządzaniem zadaniami (jobs) w Jenkinsie. Skrypt komunikuje się z Jenkins za pomocą REST API, dzięki czemu można wykonywać wybrane operacje bez konieczności korzystania z interfejsu przeglądarkowego.
 
-## 2. Budowanie aplikacji
-Jenkins kompiluje kod i przygotowuje aplikację do testowania. Na tym etapie wykrywane są podstawowe błędy związane z budowaniem projektu.
+Skrypt umożliwia:
+- wyświetlanie listy wszystkich zadań Jenkins,
+- sprawdzanie statusu ostatniego buildu wybranego zadania,
+- uruchamianie wskazanego zadania.
 
-## 3. Testy jednostkowe
-Sprawdzane jest działanie poszczególnych funkcji i modułów aplikacji. Pozwala to wykryć błędy na wczesnym etapie.
+## 2. Wykorzystane biblioteki
 
-## 4. Analiza statyczna kodu
-Kod jest analizowany bez uruchamiania aplikacji. Weryfikowana jest jego jakość, poprawność oraz zgodność z przyjętymi standardami programowania.
+W skrypcie wykorzystano następujące biblioteki Pythona:
 
-## 5. Skanowanie bezpieczeństwa
-Przeprowadzana jest kontrola kodu i zależności pod kątem znanych luk bezpieczeństwa. W przypadku wykrycia poważnych zagrożeń pipeline może zostać zatrzymany.
+- **requests** – biblioteka umożliwiająca wysyłanie zapytań HTTP do Jenkins REST API. Pozwala pobierać informacje o zadaniach oraz uruchamiać buildy.
+- **os** – umożliwia odczytywanie zmiennych środowiskowych, w których przechowywane są dane konfiguracyjne i dostępowe do Jenkins.
+- **argparse** – odpowiada za obsługę argumentów przekazywanych podczas uruchamiania skryptu z poziomu terminala.
+- **requests.auth.HTTPBasicAuth** – zapewnia autoryzację HTTP za pomocą loginu i API Token.
 
-## 6. Budowanie obrazu Docker
-Po pomyślnym przejściu wcześniejszych etapów tworzony jest obraz Docker zawierający aplikację i jej wymagane środowisko uruchomieniowe.
+## 3. Sposób działania skryptu
 
-## 7. Testy integracyjne
-Sprawdzana jest współpraca poszczególnych modułów aplikacji oraz komunikacja z zewnętrznymi usługami i bazami danych. Testy pozwalają upewnić się, że komponenty działają poprawnie razem.
+### 3.1. Konfiguracja i autoryzacja
 
-## 8. Wdrożenie na środowisko staging
-Aplikacja zostaje wdrożona na środowisko testowe, które odwzorowuje środowisko produkcyjne. Umożliwia to sprawdzenie działania całego systemu w warunkach zbliżonych do rzeczywistych.
+Na początku skrypt pobiera adres serwera Jenkins, nazwę użytkownika oraz API Token ze zmiennych środowiskowych. Następnie tworzy sesję HTTP, która wykorzystuje dane logowania do autoryzacji zapytań.
 
-## 9. Testy akceptacyjne
-Na środowisku staging przeprowadzana jest końcowa weryfikacja aplikacji. Sprawdzane jest, czy spełnia ona wymagania funkcjonalne i jest gotowa do udostępnienia użytkownikom.
+Dzięki temu dane dostępowe nie muszą być umieszczane bezpośrednio w kodzie programu.
 
-## 10. Wdrożenie na produkcję
-Jeżeli wszystkie wcześniejsze etapy zakończą się powodzeniem, aplikacja zostaje wdrożona na środowisko produkcyjne, gdzie mogą korzystać z niej użytkownicy.
+### 3.2. Wysyłanie zapytań do API
 
-## 11. Zatrzymanie pipeline i poprawa błędów
-Jeżeli testy akceptacyjne nie zostaną zaliczone, proces wdrożenia zostaje zatrzymany. Programiści analizują błędy, wprowadzają poprawki i ponownie uruchamiają pipeline.
+Funkcja `make_request()` odpowiada za komunikację z Jenkins. Wykonuje zapytania HTTP i obsługuje ewentualne błędy, takie jak:
+- brak połączenia z serwerem,
+- przekroczenie czasu oczekiwania,
+- błędy HTTP,
+- inne problemy związane z zapytaniami.
 
-## Podsumowanie
+### 3.3. Listowanie zadań
 
-Pipeline CI/CD w Jenkinsie automatyzuje proces dostarczania oprogramowania. Każdy etap zależy od poprawnego zakończenia poprzedniego. Dzięki temu błędy i zagrożenia są wykrywane przed wdrożeniem aplikacji na produkcję.
+Funkcja `list_jobs()` wysyła zapytanie do endpointu `/api/json`. Pobiera nazwy wszystkich dostępnych zadań oraz informacje o ich statusie.
 
-Podział procesu na kolejne etapy zwiększa jakość, bezpieczeństwo i niezawodność aplikacji oraz ogranicza ryzyko nieudanego wdrożenia.
+Wyniki są wyświetlane w terminalu.
+
+### 3.4. Sprawdzanie statusu buildów
+
+Funkcja `check_status()` pobiera informacje o ostatnim buildzie wskazanego zadania.
+
+Wyświetla numer buildu oraz jego status. Możliwe wyniki to między innymi:
+- `SUCCESS` – build zakończył się powodzeniem,
+- `FAILURE` – build zakończył się błędem,
+- `UNSTABLE` – build zakończył się niestabilnie,
+- `BUILD W TRAKCIE` – build jest aktualnie wykonywany.
+
+Jeśli zadanie nie było jeszcze uruchamiane, skrypt wyświetla odpowiedni komunikat.
+
+### 3.5. Uruchamianie zadania
+
+Funkcja `run_job()` wysyła zapytanie HTTP POST do endpointu `/job/nazwa_zadania/build`. Powoduje to zlecenie Jenkinsowi uruchomienia wskazanego zadania.
+
+Skrypt informuje użytkownika o wysłaniu żądania oraz wyświetla kod odpowiedzi HTTP.
+
+### 3.6. Obsługa argumentów
+
+Biblioteka `argparse` pozwala wybrać operację bez modyfikowania kodu programu. Użytkownik może wywołać skrypt z jednym z trzech poleceń: `list`, `status` lub `run`.
+
+## 4. Przykładowe użycie skryptu
+
+Przed uruchomieniem należy zainstalować bibliotekę requests:
+
+```bash
+py -m pip install requests
+```
+
+Następnie należy skonfigurować zmienne środowiskowe zawierające adres Jenkins, login i API Token.
+
+**Wyświetlenie wszystkich zadań:**
+
+```bash
+py jenkins-manager.py list
+```
+
+**Sprawdzenie statusu ostatniego buildu:**
+
+```bash
+py jenkins-manager.py status nazwa_zadania
+```
+
+**Uruchomienie wybranego zadania:**
+
+```bash
+py jenkins-manager.py run nazwa_zadania
+```
+
+## 5. Podsumowanie
+
+Przygotowany skrypt umożliwia podstawową automatyzację zarządzania zadaniami Jenkins za pomocą Pythona i REST API.
+
+Wykorzystanie biblioteki requests pozwala na łatwą komunikację z serwerem, a argparse umożliwia wygodne wybieranie operacji z poziomu terminala. Dodatkowo zastosowanie API Token oraz obsługi błędów zwiększa bezpieczeństwo i niezawodność rozwiązania.
+
+Skrypt może być w przyszłości rozbudowany o dodatkowe funkcje, takie jak zatrzymywanie buildów, sprawdzanie historii wykonań czy usuwanie zadań.

@@ -1,0 +1,96 @@
+
+jenkins:
+  systemMessage: "Jenkins skonfigurowany za pomoca JCasC"
+
+  numExecutors: 2
+  mode: NORMAL
+  quietPeriod: 5
+
+  scmCheckoutRetryCount: 2
+
+  globalNodeProperties: []
+
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "${JENKINS_ADMIN_ID}"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+  crumbIssuer:
+    standard:
+      excludeClientIPFromCrumb: false
+
+unclassified:
+  location:
+    url: "http://localhost:8080/"
+
+  timestamper:
+    allPipelines: true
+
+tool:
+  maven:
+    installations:
+      - name: "Maven 3.9"
+        properties:
+          - installSource:
+              installers:
+                - maven:
+                    id: "3.9.9"
+
+  nodejs:
+    installations:
+      - name: "NodeJS 22"
+        properties:
+          - installSource:
+              installers:
+                - nodeJSInstaller:
+                    id: "22.14.0"
+                    npmPackagesRefreshHours: 72
+
+  dockerTool:
+    installations:
+      - name: "Docker"
+        properties: []
+
+jobs:
+  - script: >
+      pipelineJob('przykladowa-aplikacja') {
+        description('Przykladowe zadanie Pipeline skonfigurowane przez JCasC')
+        definition {
+          cps {
+            script('''
+              pipeline {
+                agent any
+                stages {
+                  stage('Checkout') {
+                    steps {
+                      echo 'Pobieranie kodu z repozytorium'
+                    }
+                  }
+                  stage('Build') {
+                    steps {
+                      echo 'Budowanie aplikacji'
+                    }
+                  }
+                  stage('Test') {
+                    steps {
+                      echo 'Uruchamianie testow'
+                    }
+                  }
+                  stage('Deploy') {
+                    steps {
+                      echo 'Wdrozenie aplikacji'
+                    }
+                  }
+                }
+              }
+            ''')
+            sandbox()
+          }
+        }
+      }
